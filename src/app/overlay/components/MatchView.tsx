@@ -5,12 +5,23 @@ import { pointsDifferentialTracker } from "../../lib/pointsDifferentialTracker";
 import { Team, loadTeams } from "../../lib/teams";
 import { setOverlayState } from "../../lib/overlayState";
 import AllianceIndicators from './AllianceIndicators';
+import FuelGauge from './FuelGauge';
 import { GAME_MODE } from '../../lib/gameConfig';
 
 interface MatchViewProps {
   state: OverlayState;
   currentTime: string;
 }
+
+// ─── Fuel RP thresholds (used by both the RP indicators and the fuel gauge) ────
+const ENERGIZED_FUEL = 560;
+const SUPERCHARGED_FUEL = 700;
+const FUEL_RP_THRESHOLDS = [ENERGIZED_FUEL, SUPERCHARGED_FUEL];
+
+// Fuel gauge tile colors (same as the score boxes: bg-red-600/80 and bg-blue-600/80)
+const RED_TILE = 'rgba(220, 38, 38, 0.8)';
+const BLUE_TILE = 'rgba(37, 99, 235, 0.8)';
+const SCORE_BOX_HEIGHT = 124; // p-8 (32px top + bottom) + text-6xl line (60px)
 
 export default function MatchView({ state, currentTime }: MatchViewProps) {
 
@@ -122,12 +133,12 @@ export default function MatchView({ state, currentTime }: MatchViewProps) {
     return true;
   }, [totalSeconds, autoWinner]);
 
-  const redEnergized    = totalFuelRed >= 360;
-  const redSupercharged = totalFuelRed >= 500;
-  const redTraversal    = towerPointsRed >= 25;
-  const blueEnergized    = totalFuelBlue >= 360;
-  const blueSupercharged = totalFuelBlue >= 500;
-  const blueTraversal    = towerPointsBlue >= 25;
+  const redEnergized    = totalFuelRed >= ENERGIZED_FUEL;
+  const redSupercharged = totalFuelRed >= SUPERCHARGED_FUEL;
+  const redTraversal    = towerPointsRed >= 50;
+  const blueEnergized    = totalFuelBlue >= ENERGIZED_FUEL;
+  const blueSupercharged = totalFuelBlue >= SUPERCHARGED_FUEL;
+  const blueTraversal    = towerPointsBlue >= 50;
 
   const leftHubActive     = state.flippedTeams ? blueHubActive    : redHubActive;
   const rightHubActive    = state.flippedTeams ? redHubActive     : blueHubActive;
@@ -137,6 +148,10 @@ export default function MatchView({ state, currentTime }: MatchViewProps) {
   const rightEnergized    = state.flippedTeams ? redEnergized     : blueEnergized;
   const rightSupercharged = state.flippedTeams ? redSupercharged  : blueSupercharged;
   const rightTraversal    = state.flippedTeams ? redTraversal     : blueTraversal;
+
+  // Fuel gauge values (gauge always sits on the outer side of each score)
+  const leftFuel  = state.flippedTeams ? totalFuelBlue : totalFuelRed;
+  const rightFuel = state.flippedTeams ? totalFuelRed  : totalFuelBlue;
 
   // ─── Timer Color ─────────────────────────────────────────────────────────────
   const getTimerColor = useMemo(() => {
@@ -433,12 +448,25 @@ export default function MatchView({ state, currentTime }: MatchViewProps) {
                       align="left"
                     />
                   )}
-                  <div className={`rounded-lg p-8 text-center min-w-[180px] ${
-                    leftIsRed ? 'bg-red-600/80 animate-red-glow' : 'bg-blue-600/80 animate-blue-glow'
-                  }`}>
-                    <div className={`text-6xl font-mono font-bold text-white ${
-                      leftScoreChanged ? 'animate-score-text-change' : ''
-                    }`}>{leftAnimatingScore}</div>
+                  <div className="flex items-center gap-2">
+                    {/* Left Fuel Gauge (outer side) */}
+                    {isRebuilt && (
+                      <div className="rounded-lg overflow-hidden">
+                        <FuelGauge
+                          value={leftFuel}
+                          thresholds={FUEL_RP_THRESHOLDS}
+                          backgroundColor={leftIsRed ? RED_TILE : BLUE_TILE}
+                          height={SCORE_BOX_HEIGHT}
+                        />
+                      </div>
+                    )}
+                    <div className={`rounded-lg p-8 text-center min-w-[180px] ${
+                      leftIsRed ? 'bg-red-600/80 animate-red-glow' : 'bg-blue-600/80 animate-blue-glow'
+                    }`}>
+                      <div className={`text-6xl font-mono font-bold text-white ${
+                        leftScoreChanged ? 'animate-score-text-change' : ''
+                      }`}>{leftAnimatingScore}</div>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -460,12 +488,25 @@ export default function MatchView({ state, currentTime }: MatchViewProps) {
                       align="right"
                     />
                   )}
-                  <div className={`rounded-lg p-8 text-center min-w-[180px] ${
-                    rightIsRed ? 'bg-red-600/80 animate-red-glow' : 'bg-blue-600/80 animate-blue-glow'
-                  }`}>
-                    <div className={`text-6xl font-mono font-bold text-white ${
-                      rightScoreChanged ? 'animate-score-text-change' : ''
-                    }`}>{rightAnimatingScore}</div>
+                  <div className="flex items-center gap-2">
+                    <div className={`rounded-lg p-8 text-center min-w-[180px] ${
+                      rightIsRed ? 'bg-red-600/80 animate-red-glow' : 'bg-blue-600/80 animate-blue-glow'
+                    }`}>
+                      <div className={`text-6xl font-mono font-bold text-white ${
+                        rightScoreChanged ? 'animate-score-text-change' : ''
+                      }`}>{rightAnimatingScore}</div>
+                    </div>
+                    {/* Right Fuel Gauge (outer side) */}
+                    {isRebuilt && (
+                      <div className="rounded-lg overflow-hidden">
+                        <FuelGauge
+                          value={rightFuel}
+                          thresholds={FUEL_RP_THRESHOLDS}
+                          backgroundColor={rightIsRed ? RED_TILE : BLUE_TILE}
+                          height={SCORE_BOX_HEIGHT}
+                        />
+                      </div>
+                    )}
                   </div>
                 </div>
 

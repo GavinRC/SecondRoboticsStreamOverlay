@@ -26,6 +26,11 @@ export interface OverlayState {
   blueSecondaryColor?: string;
   allianceBranding: boolean;
   flippedTeams?: boolean;
+  // Fuel RP
+  fuelRPEnabled?: boolean;
+  fuelRPThresholds?: number[]; // Fuel counts that earn an RP, e.g. [100] or [100, 360]
+  redFuel?: number;
+  blueFuel?: number;
   // Tournament mode
   tournamentModeEnabled?: boolean;
   tournamentPath?: string;
@@ -39,6 +44,8 @@ export interface OverlayState {
   field2GameState?: string; // Track Field 2 game state
   field2RedScore?: number;
   field2BlueScore?: number;
+  field2RedFuel?: number;
+  field2BlueFuel?: number;
   field2RedOPR?: { username: string; score: number }[];
   field2BlueOPR?: { username: string; score: number }[];
   field2SeriesEnabled?: boolean;
@@ -77,6 +84,11 @@ const defaultState: OverlayState = {
   blueSeriesScore: 0,
   allianceBranding: false,
   flippedTeams: false,
+  // Fuel RP defaults
+  fuelRPEnabled: true,
+  fuelRPThresholds: [100],
+  redFuel: 0,
+  blueFuel: 0,
   // Tournament mode defaults
   tournamentModeEnabled: false,
   tournamentPath: '',
@@ -89,6 +101,8 @@ const defaultState: OverlayState = {
   field2GameFileLocation: '',
   field2RedScore: 0,
   field2BlueScore: 0,
+  field2RedFuel: 0,
+  field2BlueFuel: 0,
   field2RedOPR: [{ username: '', score: 0 }, { username: '', score: 0 }, { username: '', score: 0 }],
   field2BlueOPR: [{ username: '', score: 0 }, { username: '', score: 0 }, { username: '', score: 0 }],
   field2SeriesEnabled: false,

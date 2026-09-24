@@ -3,6 +3,11 @@ import { readFileSync, statSync } from 'fs';
 import path from 'path';
 import { OverlayState } from '../../lib/overlayState';
 
+// Fuel count files inside the game file folder.
+// Change these if your sim writes fuel counts under different names.
+const FUEL_FILE_RED = 'Fuel_R.txt';
+const FUEL_FILE_BLUE = 'Fuel_B.txt';
+
 // File cache to avoid unnecessary reads
 interface FileCacheEntry {
   content: string | { red: { username: string; score: number }[], blue: { username: string; score: number }[] };
@@ -32,6 +37,11 @@ let overlayState: OverlayState = {
   redSeriesScore: 0,
   blueSeriesScore: 0,
   allianceBranding: false,
+  // Fuel RP
+  fuelRPEnabled: true,
+  fuelRPThresholds: [100],
+  redFuel: 0,
+  blueFuel: 0,
   // Tournament mode
   tournamentModeEnabled: false,
   tournamentPath: '',
@@ -45,6 +55,8 @@ let overlayState: OverlayState = {
   field2GameState: '',
   field2RedScore: 0,
   field2BlueScore: 0,
+  field2RedFuel: 0,
+  field2BlueFuel: 0,
   field2RedOPR: [],
   field2BlueOPR: [],
   field2SeriesEnabled: false,
@@ -222,12 +234,14 @@ export async function GET() {
       const basePath = overlayState.gameFileLocation;
       
       // Read all files in parallel for maximum speed
-      const [newRedScore, newBlueScore, newMatchTime, newOPR, newGameState] = await Promise.all([
+      const [newRedScore, newBlueScore, newMatchTime, newOPR, newGameState, newRedFuel, newBlueFuel] = await Promise.all([
         Promise.resolve(readScore(path.join(basePath, 'Score_R.txt'))),
         Promise.resolve(readScore(path.join(basePath, 'Score_B.txt'))),
         Promise.resolve(readTimer(path.join(basePath, 'Timer.txt'))),
         Promise.resolve(readOPR(path.join(basePath, 'OPR.txt'))),
-        Promise.resolve(readTimer(path.join(basePath, 'GameState.txt')))
+        Promise.resolve(readTimer(path.join(basePath, 'GameState.txt'))),
+        Promise.resolve(readScore(path.join(basePath, FUEL_FILE_RED))),
+        Promise.resolve(readScore(path.join(basePath, FUEL_FILE_BLUE)))
       ]);
       
       // Check if values actually changed using efficient comparison
@@ -236,6 +250,8 @@ export async function GET() {
         overlayState.blueScore !== newBlueScore ||
         overlayState.matchTime !== newMatchTime ||
         overlayState.gameState !== newGameState ||
+        overlayState.redFuel !== newRedFuel ||
+        overlayState.blueFuel !== newBlueFuel ||
         !oprArraysEqual(overlayState.redOPR || [], newOPR.red) ||
         !oprArraysEqual(overlayState.blueOPR || [], newOPR.blue)
       ) {
@@ -246,6 +262,8 @@ export async function GET() {
           blueScore: newBlueScore,
           matchTime: newMatchTime,
           gameState: newGameState,
+          redFuel: newRedFuel,
+          blueFuel: newBlueFuel,
           redOPR: newOPR.red,
           blueOPR: newOPR.blue,
         };
@@ -261,12 +279,14 @@ export async function GET() {
       const basePath = overlayState.field2GameFileLocation;
       
       // Read all files in parallel for maximum speed
-      const [newRedScore, newBlueScore, newMatchTime, newOPR, newGameState] = await Promise.all([
+      const [newRedScore, newBlueScore, newMatchTime, newOPR, newGameState, newRedFuel, newBlueFuel] = await Promise.all([
         Promise.resolve(readScore(path.join(basePath, 'Score_R.txt'))),
         Promise.resolve(readScore(path.join(basePath, 'Score_B.txt'))),
         Promise.resolve(readTimer(path.join(basePath, 'Timer.txt'))),
         Promise.resolve(readOPR(path.join(basePath, 'OPR.txt'))),
-        Promise.resolve(readTimer(path.join(basePath, 'GameState.txt')))
+        Promise.resolve(readTimer(path.join(basePath, 'GameState.txt'))),
+        Promise.resolve(readScore(path.join(basePath, FUEL_FILE_RED))),
+        Promise.resolve(readScore(path.join(basePath, FUEL_FILE_BLUE)))
       ]);
       
       // Check if values actually changed using efficient comparison
@@ -275,6 +295,8 @@ export async function GET() {
         overlayState.field2BlueScore !== newBlueScore ||
         overlayState.field2MatchTime !== newMatchTime ||
         overlayState.field2GameState !== newGameState ||
+        overlayState.field2RedFuel !== newRedFuel ||
+        overlayState.field2BlueFuel !== newBlueFuel ||
         !oprArraysEqual(overlayState.field2RedOPR || [], newOPR.red) ||
         !oprArraysEqual(overlayState.field2BlueOPR || [], newOPR.blue)
       ) {
@@ -285,6 +307,8 @@ export async function GET() {
           field2BlueScore: newBlueScore,
           field2MatchTime: newMatchTime,
           field2GameState: newGameState,
+          field2RedFuel: newRedFuel,
+          field2BlueFuel: newBlueFuel,
           field2RedOPR: newOPR.red,
           field2BlueOPR: newOPR.blue,
         };
