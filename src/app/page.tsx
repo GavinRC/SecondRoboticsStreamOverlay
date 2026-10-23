@@ -5,6 +5,7 @@ import { useState, useEffect, useRef } from "react";
 import { getOverlayState, setOverlayState, subscribeToOverlayState, OverlayState } from "./lib/overlayState";
 import FileViewer from "./components/FileViewer";
 import { Team, loadTeams } from "./lib/teams";
+import { GameMode, GAME_MODE, GAME_MODES } from "./lib/gameConfig";
 
 export default function Dashboard() {
   const [overlayUrl, setOverlayUrl] = useState("");
@@ -13,6 +14,7 @@ export default function Dashboard() {
   const [bluePlayers, setBluePlayers] = useState<string>('');
   const [overlayState, setLocalOverlayState] = useState<OverlayState>({
     mode: 'starting-soon',
+    gameMode: GAME_MODE,
     matchTitle: 'FRC Stream Overlay',
     matchTime: '00:00',
     startingTime: '',
@@ -219,6 +221,24 @@ export default function Dashboard() {
               Display Settings
             </h2>
             <div className="space-y-3">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  Game
+                </label>
+                <select
+                  value={overlayState.gameMode || GAME_MODE}
+                  onChange={(e) => {
+                    const gameMode = e.target.value as GameMode;
+                    setLocalOverlayState(prev => ({ ...prev, gameMode }));
+                    setOverlayState({ gameMode });
+                  }}
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                >
+                  {GAME_MODES.map(m => (
+                    <option key={m.value} value={m.value}>{m.label}</option>
+                  ))}
+                </select>
+              </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                   Event Name

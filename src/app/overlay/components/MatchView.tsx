@@ -6,7 +6,8 @@ import { Team, loadTeams } from "../../lib/teams";
 import { setOverlayState } from "../../lib/overlayState";
 import AllianceIndicators from './AllianceIndicators';
 import FuelGauge from './FuelGauge';
-import { GAME_MODE } from '../../lib/gameConfig';
+import OverrideIndicators from './OverrideIndicators';
+import { GAME_MODE, GAME_TIMING } from '../../lib/gameConfig';
 
 interface MatchViewProps {
   state: OverlayState;
@@ -26,7 +27,10 @@ const SCORE_BOX_HEIGHT = 124; // p-8 (32px top + bottom) + text-6xl line (60px)
 export default function MatchView({ state, currentTime }: MatchViewProps) {
 
   // ─── UI State ───────────────────────────────────────────────────────────────
-  const isRebuilt = GAME_MODE === 'REBUILT';
+  const gameMode = state.gameMode || GAME_MODE;
+  const isRebuilt = gameMode === 'REBUILT';
+  const isOverride = gameMode === 'OVERRIDE';
+  const timing = GAME_TIMING[gameMode];
   const [isVisible, setIsVisible] = useState(false);
   const [showAutonomous, setShowAutonomous] = useState(false);
   const [showTimer, setShowTimer] = useState(false);
@@ -50,6 +54,12 @@ export default function MatchView({ state, currentTime }: MatchViewProps) {
   const [totalFuelBlue, setTotalFuelBlue] = useState(0);
   const [towerPointsRed, setTowerPointsRed] = useState(0);
   const [towerPointsBlue, setTowerPointsBlue] = useState(0);
+
+  // ─── Override (VEX) State ────────────────────────────────────────────────────
+  const [awpRed, setAwpRed] = useState(false);
+  const [awpBlue, setAwpBlue] = useState(false);
+  const [autoBonusRed, setAutoBonusRed] = useState(0);
+  const [autoBonusBlue, setAutoBonusBlue] = useState(0);
 
   // ─── Helpers ─────────────────────────────────────────────────────────────────
   const parseTimeToSeconds = (timeStr: string): number => {
@@ -153,13 +163,18 @@ export default function MatchView({ state, currentTime }: MatchViewProps) {
   const leftFuel  = state.flippedTeams ? totalFuelBlue : totalFuelRed;
   const rightFuel = state.flippedTeams ? totalFuelRed  : totalFuelBlue;
 
+  const leftAwp        = state.flippedTeams ? awpBlue       : awpRed;
+  const rightAwp       = state.flippedTeams ? awpRed        : awpBlue;
+  const leftAutoBonus  = state.flippedTeams ? autoBonusBlue : autoBonusRed;
+  const rightAutoBonus = state.flippedTeams ? autoBonusRed  : autoBonusBlue;
+
   // ─── Timer Color ─────────────────────────────────────────────────────────────
   const getTimerColor = useMemo(() => {
     if (totalSeconds === 0) return 'text-red-500';
-    if (totalSeconds <= 30) return 'text-yellow-400';
-    if (totalSeconds <= 160 && totalSeconds > 140) return 'text-green-400';
+    if (totalSeconds <= timing.endgame) return 'text-yellow-400';
+    if (totalSeconds <= timing.matchLength && totalSeconds > timing.autoEnd) return 'text-green-400';
     return 'text-white';
-  }, [totalSeconds]);
+  }, [totalSeconds, timing]);
 
   // Load teams
   useEffect(() => {
@@ -175,8 +190,8 @@ export default function MatchView({ state, currentTime }: MatchViewProps) {
   // Auto banner
   useEffect(() => {
     const secs = parseTimeToSeconds(state.matchTime);
-    setShowAutonomous(secs <= 160 && secs > 145);
-  }, [state.matchTime]);
+    setShowAutonomous(secs <= timing.matchLength && secs > timing.autoBannerEnd);
+  }, [state.matchTime, timing]);
 
   // Game state polling
   useEffect(() => {
@@ -328,6 +343,43 @@ export default function MatchView({ state, currentTime }: MatchViewProps) {
     return () => clearInterval(interval);
   }, [isRebuilt, state.gameFileLocation]);
 
+  // AWP / auto bonus file polling (OVERRIDE only)
+  useEffect(() => {
+    if (!isOverride) return;
+    if (!state.gameFileLocation || !state.gameFileLocation.trim()) return;
+
+    // Files may hold a number or a true/false flag
+    const read = (file: string) =>
+      fetch(`/api/read-file?path=${encodeURIComponent(state.gameFileLocation + '/' + file)}`, {
+        cache: 'no-store', headers: { 'Cache-Control': 'no-cache' }
+      })
+      .then(r => r.ok ? r.text() : '0')
+      .then(t => {
+        const v = t.trim().toLowerCase();
+        if (v === 'true' || v === 'yes') return 1;
+        return parseFloat(v) || 0;
+      })
+      .catch(() => 0);
+
+    const readWPFiles = async () => {
+      const [awpR, awpB, bonusR, bonusB] = await Promise.all([
+        read('AWP_R.txt'),
+        read('AWP_B.txt'),
+        read('Auto_bonus_R.txt'),
+        read('Auto_bonus_B.txt'),
+      ]);
+
+      setAwpRed(awpR > 0);
+      setAwpBlue(awpB > 0);
+      setAutoBonusRed(bonusR);
+      setAutoBonusBlue(bonusB);
+    };
+
+    readWPFiles();
+    const interval = setInterval(readWPFiles, 500);
+    return () => clearInterval(interval);
+  }, [isOverride, state.gameFileLocation]);
+
   // ─── Render ──────────────────────────────────────────────────────────────────
   return (
     <>
@@ -410,8 +462,8 @@ export default function MatchView({ state, currentTime }: MatchViewProps) {
             {/* Center Logo */}
             <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-24 h-24 z-10">
               <Image
-                src="/assets/src-light-logo.png"
-                alt="SRC Logo"
+                src={isOverride ? "/assets/svc-logo.png" : "/assets/src-light-logo.png"}
+                alt={isOverride ? "SVC Logo" : "SRC Logo"}
                 fill
                 style={{ objectFit: 'contain' }}
                 className="drop-shadow-lg"
@@ -445,6 +497,14 @@ export default function MatchView({ state, currentTime }: MatchViewProps) {
                       energized={leftEnergized}
                       supercharged={leftSupercharged}
                       traversal={leftTraversal}
+                      align="left"
+                    />
+                  )}
+                  {isOverride && (
+                    <OverrideIndicators
+                      isRed={leftIsRed}
+                      awp={leftAwp}
+                      autoBonus={leftAutoBonus}
                       align="left"
                     />
                   )}
@@ -485,6 +545,14 @@ export default function MatchView({ state, currentTime }: MatchViewProps) {
                       energized={rightEnergized}
                       supercharged={rightSupercharged}
                       traversal={rightTraversal}
+                      align="right"
+                    />
+                  )}
+                  {isOverride && (
+                    <OverrideIndicators
+                      isRed={rightIsRed}
+                      awp={rightAwp}
+                      autoBonus={rightAutoBonus}
                       align="right"
                     />
                   )}

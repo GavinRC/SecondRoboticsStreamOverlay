@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { readFileSync, statSync } from 'fs';
 import path from 'path';
 import { OverlayState } from '../../lib/overlayState';
+import { GAME_MODE } from '../../lib/gameConfig';
 
 // Fuel count files inside the game file folder.
 // Change these if your sim writes fuel counts under different names.
@@ -20,6 +21,7 @@ let lastTournamentUpdate = 0;
 
 let overlayState: OverlayState = {
   mode: 'starting-soon',
+  gameMode: GAME_MODE,
   matchTitle: 'FRC Stream Overlay',
   matchTime: '00:00',
   startingTime: '',

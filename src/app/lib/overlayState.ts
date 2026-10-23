@@ -1,7 +1,10 @@
+import { GameMode, GAME_MODE } from './gameConfig';
+
 export type OverlayMode = 'match' | 'starting-soon' | 'results';
 
 export interface OverlayState {
   mode: OverlayMode;
+  gameMode?: GameMode;
   matchTitle: string;
   matchTime: string;
   startingTime?: string;
@@ -67,6 +70,7 @@ export interface OverlayState {
 
 const defaultState: OverlayState = {
   mode: 'starting-soon',
+  gameMode: GAME_MODE,
   matchTitle: 'FRC Stream Overlay',
   matchTime: '00:00',
   gameFileLocation: '',
