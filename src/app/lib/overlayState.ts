@@ -116,18 +116,30 @@ const defaultState: OverlayState = {
   differentialData: [],
 };
 
+// Only log the first failure of a streak, so a restarting dev server
+// doesn't flood the console 10x per second.
+let overlayFetchFailing = false;
+
+const fetchOverlayState = async (): Promise<OverlayState> => {
+  const response = await fetch('/api/overlay-state', { cache: 'no-store' });
+  if (!response.ok) throw new Error(`overlay-state responded ${response.status}`);
+  return await response.json();
+};
+
 export const getOverlayState = async (): Promise<OverlayState> => {
   if (typeof window === 'undefined') return defaultState;
-  
+
   try {
-    const response = await fetch('/api/overlay-state');
-    if (response.ok) {
-      return await response.json();
-    }
+    const state = await fetchOverlayState();
+    overlayFetchFailing = false;
+    return state;
   } catch (error) {
-    console.error('Failed to load overlay state:', error);
+    if (!overlayFetchFailing) {
+      console.warn('Failed to load overlay state (will keep retrying):', error);
+      overlayFetchFailing = true;
+    }
   }
-  
+
   return defaultState;
 };
 
@@ -156,53 +168,49 @@ export const subscribeToOverlayState = (callback: (state: OverlayState) => void,
   
   let lastUpdated = 0;
   let isFirstCall = true;
-  let currentInterval: NodeJS.Timeout | null = null;
-  let lastPollRate = 0;
-  
-  const startPolling = (pollRate: number) => {
-    // Only restart if poll rate changed
-    if (lastPollRate === pollRate && currentInterval) return;
-    
-    if (currentInterval) {
-      clearInterval(currentInterval);
-    }
-    
-    lastPollRate = pollRate;
-    currentInterval = setInterval(async () => {
-      try {
-        const state = await getOverlayState();
-        
-        // Determine if we should be in high-speed mode using game state from the overlay state
-        const field1Active = state.gameState && state.gameState.trim() !== '' && state.gameState.trim() !== 'FINISHED';
-        const field2Active = state.field2Enabled && state.field2GameState && 
-                            state.field2GameState.trim() !== '' && state.field2GameState.trim() !== 'FINISHED';
-        
-        const shouldBeHighSpeed = options?.forceHighSpeed || field1Active || field2Active || state.mode === 'match';
-        
-        // Switch polling rate if needed
-        const desiredPollRate = shouldBeHighSpeed ? 100 : 1000; // 100ms when active, 1s when idle
-        if (desiredPollRate !== lastPollRate) {
-          startPolling(desiredPollRate);
-        }
-        
-        // Call callback on first call or if state has actually changed
-        if (isFirstCall || (state.lastUpdated && state.lastUpdated !== lastUpdated)) {
-          lastUpdated = state.lastUpdated || 0;
-          isFirstCall = false;
-          callback(state);
-        }
-      } catch (error) {
-        console.error('Failed to poll overlay state:', error);
+  let stopped = false;
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  let pollRate = 1000; // start slow, speed up once we know a match is active
+
+  // Sequential polling: the next request is scheduled only after the previous one
+  // finishes, so a slow server can never pile up overlapping requests.
+  const poll = async () => {
+    let failed = false;
+    try {
+      const state = await fetchOverlayState();
+      overlayFetchFailing = false;
+
+      // Determine if we should be in high-speed mode using game state from the overlay state
+      const field1Active = state.gameState && state.gameState.trim() !== '' && state.gameState.trim() !== 'FINISHED';
+      const field2Active = state.field2Enabled && state.field2GameState &&
+                          state.field2GameState.trim() !== '' && state.field2GameState.trim() !== 'FINISHED';
+      const shouldBeHighSpeed = options?.forceHighSpeed || field1Active || field2Active || state.mode === 'match';
+      pollRate = shouldBeHighSpeed ? 100 : 1000; // 100ms when active, 1s when idle
+
+      // Call callback on first call or if state has actually changed
+      if (!stopped && (isFirstCall || (state.lastUpdated && state.lastUpdated !== lastUpdated))) {
+        lastUpdated = state.lastUpdated || 0;
+        isFirstCall = false;
+        callback(state);
       }
-    }, pollRate);
-  };
-  
-  // Start with slow polling initially
-  startPolling(1000);
-  
-  return () => {
-    if (currentInterval) {
-      clearInterval(currentInterval);
+    } catch (error) {
+      failed = true;
+      if (!overlayFetchFailing) {
+        console.warn('Failed to poll overlay state (will keep retrying):', error);
+        overlayFetchFailing = true;
+      }
     }
+
+    if (!stopped) {
+      // Back off to 1s while the server is unreachable
+      timer = setTimeout(poll, failed ? 1000 : pollRate);
+    }
+  };
+
+  timer = setTimeout(poll, pollRate);
+
+  return () => {
+    stopped = true;
+    if (timer) clearTimeout(timer);
   };
 };

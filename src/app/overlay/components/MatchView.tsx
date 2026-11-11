@@ -6,6 +6,7 @@ import { Team, loadTeams } from "../../lib/teams";
 import { setOverlayState } from "../../lib/overlayState";
 import AllianceIndicators from './AllianceIndicators';
 import FuelGauge from './FuelGauge';
+import RankingsTicker, { RANKINGS_TICKER_HEIGHT } from './RankingsTicker';
 import { GAME_MODE } from '../../lib/gameConfig';
 
 interface MatchViewProps {
@@ -23,12 +24,22 @@ const RED_TILE = 'rgba(220, 38, 38, 0.8)';
 const BLUE_TILE = 'rgba(37, 99, 235, 0.8)';
 const SCORE_BOX_HEIGHT = 124; // p-8 (32px top + bottom) + text-6xl line (60px)
 
+// ─── Picture-in-picture camera frames ──────────────────────────────────────────
+// Mirrors the xRC camera string (TLX / TLY / WIDTH / HEIGHT are % of the screen):
+//   left cam:  TLX 1,  TLY 7, WIDTH 20, HEIGHT 20
+//   right cam: TLX 79, TLY 7, WIDTH 20, HEIGHT 20
+const PIP_CAMERAS = [
+  { key: 'left',  tlx: 1,  tly: 7, width: 20, height: 20, color: '#ef4444' }, // red
+  { key: 'right', tlx: 79, tly: 7, width: 20, height: 20, color: '#3b82f6' }, // blue
+] as const;
+const PIP_BORDER_PX = 4;
+const PIP_TOP_PCT = PIP_CAMERAS[0].tly;
+
 export default function MatchView({ state, currentTime }: MatchViewProps) {
 
   // ─── UI State ───────────────────────────────────────────────────────────────
   const isRebuilt = GAME_MODE === 'REBUILT';
   const [isVisible, setIsVisible] = useState(false);
-  const [showAutonomous, setShowAutonomous] = useState(false);
   const [showTimer, setShowTimer] = useState(false);
   const [gameState, setGameState] = useState<string>('');
   const [teams, setTeams] = useState<Team[]>([]);
@@ -172,12 +183,6 @@ export default function MatchView({ state, currentTime }: MatchViewProps) {
     return () => clearTimeout(timer);
   }, []);
 
-  // Auto banner
-  useEffect(() => {
-    const secs = parseTimeToSeconds(state.matchTime);
-    setShowAutonomous(secs <= 160 && secs > 145);
-  }, [state.matchTime]);
-
   // Game state polling
   useEffect(() => {
     if (!state.gameFileLocation) {
@@ -210,9 +215,15 @@ export default function MatchView({ state, currentTime }: MatchViewProps) {
       }
     };
 
-    readGameState();
-    const interval = setInterval(readGameState, 100);
-    return () => clearInterval(interval);
+    // Sequential polling so slow responses never stack up overlapping requests
+    let stopped = false;
+    let timer: ReturnType<typeof setTimeout>;
+    const loop = async () => {
+      await readGameState();
+      if (!stopped) timer = setTimeout(loop, 100);
+    };
+    loop();
+    return () => { stopped = true; clearTimeout(timer); };
   }, [state.gameFileLocation]);
 
   // Score animation
@@ -331,39 +342,51 @@ export default function MatchView({ state, currentTime }: MatchViewProps) {
   // ─── Render ──────────────────────────────────────────────────────────────────
   return (
     <>
-      <div className="absolute top-4 left-4 bg-gray-900/85 backdrop-blur-sm rounded-lg p-3 border border-white/30 animate-fade-in">
-        <div className="text-lg font-bold">{state.matchTitle}</div>
+      {/* Camera PiP frames (drawn just outside the camera area so no footage is covered) */}
+      {PIP_CAMERAS.map(cam => (
+        <div
+          key={cam.key}
+          className="absolute pointer-events-none rounded-sm animate-fade-in"
+          style={{
+            left: `calc(${cam.tlx}% - ${PIP_BORDER_PX}px)`,
+            top: `calc(${cam.tly}% - ${PIP_BORDER_PX}px)`,
+            width: `calc(${cam.width}% + ${PIP_BORDER_PX * 2}px)`,
+            height: `calc(${cam.height}% + ${PIP_BORDER_PX * 2}px)`,
+            border: `${PIP_BORDER_PX}px solid ${cam.color}`,
+            boxShadow: `0 0 18px ${cam.color}99, 0 0 6px ${cam.color}`,
+          }}
+        />
+      ))}
+
+      {/* Match title — sits just above the left camera (single row so it fits the strip above the PiP) */}
+      <div
+        className="absolute flex items-baseline gap-3 bg-gray-900/85 backdrop-blur-sm rounded-lg px-3 py-1.5 border border-white/30 animate-fade-in"
+        style={{ left: `calc(${PIP_CAMERAS[0].tlx}% - ${PIP_BORDER_PX}px)`, bottom: `calc(${100 - PIP_TOP_PCT}% + ${PIP_BORDER_PX + 6}px)` }}
+      >
+        <div className="text-lg font-bold whitespace-nowrap">{state.matchTitle}</div>
         {state.matchNumber && state.matchNumber.trim() && (
-          <div className="text-sm text-white/80 mt-1">{state.matchNumber}</div>
+          <div className="text-sm text-white/80 whitespace-nowrap">{state.matchNumber}</div>
         )}
       </div>
 
-      <div className="absolute top-4 right-4 flex flex-col gap-2">
-        <div className="bg-gray-900/85 backdrop-blur-sm rounded-lg p-3 border border-white/30 animate-fade-in">
-          <div className="text-sm font-mono">{currentTime}</div>
-        </div>
+      {/* Clock — sits just above the right camera */}
+      <div
+        className="absolute bg-gray-900/85 backdrop-blur-sm rounded-lg px-3 py-1.5 border border-white/30 animate-fade-in"
+        style={{ right: `calc(${100 - PIP_CAMERAS[1].tlx - PIP_CAMERAS[1].width}% - ${PIP_BORDER_PX}px)`, bottom: `calc(${100 - PIP_TOP_PCT}% + ${PIP_BORDER_PX + 6}px)` }}
+      >
+        <div className="text-lg font-mono whitespace-nowrap">{currentTime}</div>
       </div>
 
-      <div className={`absolute bottom-4 left-4 right-4 transition-all duration-700 ease-out ${
-        isVisible ? 'translate-y-0 opacity-100' : 'translate-y-full opacity-0'
-      }`}>
-        <div className="flex flex-col items-center gap-2">
+      {/* Live rankings ticker along the very bottom */}
+      <RankingsTicker />
 
-          {/* Timer Container */}
-          <div className={`relative transition-all duration-700 ${
-            showTimer ? 'translate-y-0 opacity-100' : 'translate-y-full opacity-0'
-          }`}>
-            <div className={`absolute bottom-full left-1/2 -translate-x-1/2 mb-2 bg-green-600/90 rounded-lg px-6 py-2 transition-all duration-700 ${
-              showAutonomous ? 'translate-y-0 opacity-100' : 'translate-y-full opacity-0'
-            }`}>
-              <span className="text-lg font-bold text-white">AUTO</span>
-            </div>
-            <div className="bg-gray-900/85 backdrop-blur-sm rounded-lg px-8 py-3 border border-white/30">
-              <div className={`text-6xl font-bold font-mono animate-pulse transition-colors duration-300 ${getTimerColor}`}>
-                {state.matchTime}
-              </div>
-            </div>
-          </div>
+      <div
+        className={`absolute left-4 right-4 transition-all duration-700 ease-out ${
+          isVisible ? 'translate-y-0 opacity-100' : 'translate-y-full opacity-0'
+        }`}
+        style={{ bottom: RANKINGS_TICKER_HEIGHT + 12 }}
+      >
+        <div className="flex flex-col items-center gap-2">
 
           {/* Score Container */}
           <div
@@ -407,21 +430,10 @@ export default function MatchView({ state, currentTime }: MatchViewProps) {
               </>
             )}
 
-            {/* Center Logo */}
-            <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-24 h-24 z-10">
-              <Image
-                src="/assets/src-light-logo.png"
-                alt="SRC Logo"
-                fill
-                style={{ objectFit: 'contain' }}
-                className="drop-shadow-lg"
-              />
-            </div>
-
-            <div className="flex items-center justify-center">
+            <div className="flex items-end justify-center">
 
               {/* Left side */}
-              <div className="flex items-center justify-end gap-4 flex-1">
+              <div className="flex items-end justify-end gap-4 flex-1">
                 {/* Left OPR */}
                 <div className={`text-sm opacity-90 space-y-2 text-right ${leftIsRed ? 'text-red-100' : 'text-blue-100'}`}>
                   {leftOPR.map((player, index) => (
@@ -471,11 +483,31 @@ export default function MatchView({ state, currentTime }: MatchViewProps) {
                 </div>
               </div>
 
-              {/* Center space */}
-              <div className="w-24"></div>
+              {/* Center column: SRC logo on top, match timer below it */}
+              <div className="flex flex-col items-center gap-2 z-10">
+                <div className="relative w-32 h-32 -translate-y-2">
+                  <Image
+                    src="/assets/src-light-logo.png"
+                    alt="SRC Logo"
+                    fill
+                    style={{ objectFit: 'contain' }}
+                    className="drop-shadow-lg"
+                  />
+                </div>
+
+                <div className={`relative transition-all duration-700 ${
+                  showTimer ? 'translate-y-0 opacity-100' : 'translate-y-2 opacity-0'
+                }`}>
+                  <div className="bg-gray-900/85 rounded-lg px-6 py-2 border border-white/30">
+                    <div className={`text-6xl font-bold font-mono animate-pulse transition-colors duration-300 whitespace-nowrap ${getTimerColor}`}>
+                      {state.matchTime}
+                    </div>
+                  </div>
+                </div>
+              </div>
 
               {/* Right side */}
-              <div className="flex items-center justify-start gap-4 flex-1">
+              <div className="flex items-end justify-start gap-4 flex-1">
                 {/* Right Score + Indicators */}
                 <div className="flex flex-col items-start gap-2 ml-16">
                   {isRebuilt && (
