@@ -146,10 +146,10 @@ export default function MatchView({ state, currentTime }: MatchViewProps) {
 
   const redEnergized    = totalFuelRed >= ENERGIZED_FUEL;
   const redSupercharged = totalFuelRed >= SUPERCHARGED_FUEL;
-  const redTraversal    = towerPointsRed >= 50;
+  const redTraversal    = towerPointsRed >= 35;
   const blueEnergized    = totalFuelBlue >= ENERGIZED_FUEL;
   const blueSupercharged = totalFuelBlue >= SUPERCHARGED_FUEL;
-  const blueTraversal    = towerPointsBlue >= 50;
+  const blueTraversal    = towerPointsBlue >= 35;
 
   const leftHubActive     = state.flippedTeams ? blueHubActive    : redHubActive;
   const rightHubActive    = state.flippedTeams ? redHubActive     : blueHubActive;
